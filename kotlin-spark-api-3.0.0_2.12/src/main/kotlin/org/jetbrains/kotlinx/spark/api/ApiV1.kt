@@ -296,9 +296,16 @@ fun schema(type: KType, map: Map<String, KType> = mapOf()): DataType {
                             .parameters
                             .filter { it.findAnnotation<Transient>() == null }
                             .map {
-                                val projectedType = types[it.type.toString()] ?: it.type
+                                val paramType = it.type
+                                val projectedType = types[paramType.toString()] ?: paramType
                                 val propertyDescriptor = PropertyDescriptor(it.name, klass.java, "is" + it.name?.capitalize(), null)
-                                KStructField(propertyDescriptor.readMethod.name, StructField(it.name, schema(projectedType, types), projectedType.isMarkedNullable, Metadata.empty()))
+
+                                @Suppress("UNCHECKED_CAST")
+                                val udt = paramType.findAnnotation<SQLUserDefinedType>()?.udt?.java
+                                        ?: UDTRegistration.getUDTFor(paramType.toString())
+                                                ?.run { if (isDefined) get() as Class<UserDefinedType<*>> else null }
+                                val schema = udt?.getConstructor()?.newInstance() ?: schema(projectedType, types)
+                                KStructField(propertyDescriptor.readMethod.name, StructField(it.name, schema, projectedType.isMarkedNullable, Metadata.empty()))
                             }
                             .toTypedArray()
             )
